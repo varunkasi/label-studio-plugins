@@ -98,6 +98,7 @@ function mergeRegionsByGlobalId() {
           if (globalId) {
             regionToGlobalId.set(region.id, globalId);
             console.log(`[Merge] Region ${region.id} has global_id: ${globalId}`);
+          }
         }
       }
     });
