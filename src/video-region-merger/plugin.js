@@ -71,6 +71,10 @@ function mergeRegionsByGlobalId() {
     const regions = annotation.regions || [];
     const results = annotation.results || [];
 
+    console.log('[Merge] Starting merge process...');
+    console.log('[Merge] Total regions:', regions.length);
+    console.log('[Merge] Total results:', results.length);
+
     if (regions.length === 0) {
       Htx.showModal('No regions found to merge.', 'info');
       return;
@@ -93,6 +97,7 @@ function mergeRegionsByGlobalId() {
         // For per-region results, parent_id links to the region
         if (result.parent_id && globalId) {
           regionToGlobalId.set(result.parent_id, globalId);
+          console.log(`[Merge] Region ${result.parent_id} has global_id: ${globalId}`);
         }
       }
     });
@@ -115,6 +120,8 @@ function mergeRegionsByGlobalId() {
       }
     });
 
+    console.log('[Merge] Groups found:', globalIdToRegions.size);
+
     // Track merge statistics
     let mergedCount = 0;
     let totalRegionsProcessed = 0;
@@ -122,14 +129,45 @@ function mergeRegionsByGlobalId() {
     // For each global_id group with multiple regions, merge them
     globalIdToRegions.forEach((regionsGroup, globalId) => {
       if (regionsGroup.length > 1) {
+        console.log(`[Merge] Merging ${regionsGroup.length} regions for global_id: ${globalId}`);
         mergeRegions(regionsGroup, globalId, annotation);
         mergedCount++;
         totalRegionsProcessed += regionsGroup.length;
       }
     });
 
-    // Update the annotation view
+    console.log('[Merge] Merge complete. Triggering UI update...');
+
+    // Force multiple UI refresh mechanisms to ensure regions are redrawn
+    // Method 1: Direct update
     annotation.updateObjects();
+
+    // Method 2: Trigger a region list refresh
+    if (annotation.regionStore) {
+      annotation.regionStore.unselectAll();
+    }
+
+    // Method 3: History-based refresh
+    if (annotation.history) {
+      annotation.history.freeze();
+      annotation.updateObjects();
+      annotation.history.unfreeze();
+    }
+
+    // Method 4: Delayed refresh to ensure React/MobX state updates propagate
+    setTimeout(() => {
+      annotation.updateObjects();
+      if (annotation.regionStore) {
+        annotation.regionStore.triggerUpdate();
+      }
+      console.log('[Merge] Delayed UI refresh complete');
+    }, 50);
+
+    // Method 5: Final refresh to catch any stragglers
+    setTimeout(() => {
+      annotation.updateObjects();
+      console.log('[Merge] Final UI refresh complete');
+    }, 200);
 
     if (mergedCount > 0) {
       Htx.showModal(
@@ -154,6 +192,9 @@ function mergeRegionsByGlobalId() {
  * @param {Object} annotation - The annotation object
  */
 function mergeRegions(regionsToMerge, globalId, annotation) {
+  console.log(`[Merge] Processing merge for global_id: ${globalId}`);
+  console.log(`[Merge] Regions to merge:`, regionsToMerge.map(r => ({ id: r.id, frames: r.sequence?.length })));
+
   // Collect all sequences from all regions
   const allSequences = [];
   const labels = regionsToMerge[0].labels || [];
@@ -163,6 +204,7 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
   regionsToMerge.forEach(region => {
     // VideoRectangle regions have a sequence property
     if (region.sequence && Array.isArray(region.sequence)) {
+      console.log(`[Merge] Region ${region.id} has ${region.sequence.length} keyframes`);
       allSequences.push(...region.sequence);
     }
 
@@ -174,6 +216,8 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
       fromName = region.labeling.from_name;
     }
   });
+
+  console.log(`[Merge] Total keyframes collected: ${allSequences.length}`);
 
   // Sort sequences by frame/time (assuming each sequence item has a 'frame' or 'time' property)
   allSequences.sort((a, b) => {
@@ -194,6 +238,8 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
     }
   });
 
+  console.log(`[Merge] Unique keyframes after deduplication: ${uniqueSequences.length}`);
+
   // Create a new merged region
   // For VideoRectangle, we need to create a result with the merged sequence
   if (videoObject && fromName) {
@@ -208,6 +254,8 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
         duration = (lastFrame - firstFrame) / framerate;
       }
 
+      console.log(`[Merge] Creating new merged region with duration: ${duration}s`);
+
       // Create the merged result
       const mergedResult = annotation.createResult(
         {
@@ -221,6 +269,8 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
         videoObject
       );
 
+      console.log(`[Merge] Merged result created:`, mergedResult?.id);
+
       // Add the global_id to the new merged region
       if (mergedResult) {
         // Find the global_id TextArea control
@@ -228,7 +278,7 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
 
         if (globalIdControl) {
           // Create a TextArea result for the merged region
-          annotation.createResult(
+          const globalIdResult = annotation.createResult(
             {
               text: [globalId]
             },
@@ -237,25 +287,57 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
             videoObject,
             mergedResult
           );
+          console.log(`[Merge] global_id assigned to merged region:`, globalIdResult?.id);
         }
       }
 
       // Delete all original regions and their associated results
-      regionsToMerge.forEach(region => {
-        // Find and delete associated TextArea results
+      console.log(`[Merge] Deleting ${regionsToMerge.length} original regions...`);
+
+      // Unselect any selected regions first to avoid UI issues
+      if (annotation.regionStore && annotation.regionStore.unselectAll) {
+        annotation.regionStore.unselectAll();
+      }
+
+      regionsToMerge.forEach((region, index) => {
+        console.log(`[Merge] Deleting region ${index + 1}/${regionsToMerge.length}: ${region.id}`);
+
+        // Unselect this specific region if it's selected
+        if (region.selected) {
+          region.setSelected(false);
+        }
+
+        // Find and delete associated TextArea results first
         const resultsToDelete = annotation.results.filter(r => r.parent_id === region.id);
+        console.log(`[Merge]   - Found ${resultsToDelete.length} associated results to delete`);
+
         resultsToDelete.forEach(result => {
-          annotation.deleteResult(result);
+          try {
+            annotation.deleteResult(result);
+            console.log(`[Merge]   - Deleted result: ${result.id}`);
+          } catch (err) {
+            console.error(`[Merge]   - Error deleting result ${result.id}:`, err);
+          }
         });
 
         // Delete the region itself
-        annotation.deleteRegion(region);
+        try {
+          // Try to manually remove from the region list if deleteRegion doesn't trigger UI update
+          annotation.deleteRegion(region);
+          console.log(`[Merge]   - Deleted region: ${region.id}`);
+        } catch (err) {
+          console.error(`[Merge]   - Error deleting region ${region.id}:`, err);
+        }
       });
 
+      console.log(`[Merge] Deletion complete. Current region count: ${annotation.regions.length}`);
+
     } catch (error) {
-      console.error('Error creating merged region:', error);
+      console.error('[Merge] Error creating merged region:', error);
       throw error;
     }
+  } else {
+    console.error('[Merge] Missing videoObject or fromName, cannot create merged region');
   }
 }
 

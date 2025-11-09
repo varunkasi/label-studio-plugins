@@ -114,6 +114,7 @@ Example data format:
 - Ensure you've assigned `global_id` values to your regions
 - Check that multiple regions share the exact same `global_id` (case-sensitive)
 - Verify you have selected an annotation
+- Open browser console (F12) and look for `[Merge]` log messages to see what's happening
 
 **Button not appearing?**
 - The button may take a moment to load (up to 1 second)
@@ -123,6 +124,36 @@ Example data format:
 - Check browser console for error messages
 - Verify your Label Studio configuration matches the required schema
 - Ensure the `global_id` TextArea is configured with `perRegion="true"`
+
+**UI not updating after merge?**
+- The plugin includes multiple UI refresh mechanisms
+- Check browser console for `[Merge]` logs to confirm regions were actually merged
+- If regions are merged in the backend but UI doesn't update, try:
+  - Refreshing the page (your annotations are saved)
+  - Navigating to another task and back
+  - Report this as a bug with console logs
+
+## Debugging
+
+The plugin includes comprehensive logging. Open your browser console (F12) to see detailed merge information:
+
+```
+[Merge] Starting merge process...
+[Merge] Total regions: 3
+[Merge] Region abc123 has global_id: P000123
+[Merge] Merging 2 regions for global_id: P000123
+[Merge] Region abc123 has 5 keyframes
+[Merge] Total keyframes collected: 10
+[Merge] Creating new merged region with duration: 5.5s
+[Merge] Deleting 2 original regions...
+[Merge] Deletion complete. Current region count: 2
+```
+
+This helps verify:
+- How many regions have `global_id` values
+- Which regions are being merged
+- Whether the merge succeeded
+- If regions were actually deleted from the annotation store
 
 ## Support
 
