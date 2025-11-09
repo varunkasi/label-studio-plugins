@@ -82,5 +82,11 @@
     "description": "Dynamically populates a text box given the input of a text area tag for span based labeling",
     "path": "dynamic-text-spans",
     "private": false
+  },
+  {
+    "title": "Video region merger by Global ID",
+    "description": "Merges video rectangle regions that share the same global_id value for person tracking and re-identification tasks",
+    "path": "video-region-merger",
+    "private": false
   }
 ]

@@ -1,0 +1,31 @@
+<View>
+  <!-- Bind FPS per task; falls back to 24 if missing -->
+  <Video name="video" value="$video" framerate="$fps" timelineHeight="240" height="600" muted="false"/>
+
+  <VideoRectangle
+    name="box"
+    toName="video"
+    smart="true"
+    model_score_threshold="0.2"
+    model_box_threshold="0.2"
+    model_text_threshold="0.01"
+    tracker_lost_buffer="100"
+    tracker_match_threshold="0.55"
+    tracker_activation_threshold="0.5"
+  />
+
+  <Labels name="person" toName="video">
+    <Label value="Person" background="green"/>
+  </Labels>
+
+  <!-- ReID attributes applied per track (region) -->
+  <View visibleWhen="region-selected">
+    <Header size="4" value="ReID Annotation (per track)" />
+
+    <!-- Global identity for cross-track/cross-scene association -->
+    <TextArea name="global_id" toName="video" perRegion="true" maxSubmissions="1" rows="1" placeholder="Enter Global ID (e.g., P000123)" />
+
+    <!-- Free-form notes -->
+    <TextArea name="reid_notes" toName="video" perRegion="true" placeholder="Notes about identity, accessories, gait, etc." />
+  </View>
+</View>
