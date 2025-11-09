@@ -69,11 +69,9 @@ function mergeRegionsByGlobalId() {
     }
 
     const regions = annotation.regions || [];
-    const results = annotation.results || [];
 
     console.log('[Merge] Starting merge process...');
     console.log('[Merge] Total regions:', regions.length);
-    console.log('[Merge] Total results:', results.length);
 
     if (regions.length === 0) {
       Htx.showModal('No regions found to merge.', 'info');
@@ -83,21 +81,23 @@ function mergeRegionsByGlobalId() {
     // Build a map of region_id -> global_id
     const regionToGlobalId = new Map();
 
-    // Find all TextArea results with from_name="global_id"
-    results.forEach(result => {
-      if (result.type === 'textarea' &&
-          result.from_name &&
-          result.from_name.name === 'global_id' &&
-          result.value &&
-          result.value.text &&
-          result.value.text[0]) {
+    // For each region, find its associated global_id from its results array
+    regions.forEach(region => {
+      if (region.results && Array.isArray(region.results)) {
+        const globalIdResult = region.results.find(r =>
+          r.type === 'textarea' &&
+          r.from_name &&
+          r.from_name.name === 'global_id' &&
+          r.value &&
+          r.value.text &&
+          r.value.text[0]
+        );
 
-        const globalId = result.value.text[0].trim();
-
-        // For per-region results, parent_id links to the region
-        if (result.parent_id && globalId) {
-          regionToGlobalId.set(result.parent_id, globalId);
-          console.log(`[Merge] Region ${result.parent_id} has global_id: ${globalId}`);
+        if (globalIdResult) {
+          const globalId = globalIdResult.value.text[0].trim();
+          if (globalId) {
+            regionToGlobalId.set(region.id, globalId);
+            console.log(`[Merge] Region ${region.id} has global_id: ${globalId}`);
         }
       }
     });
@@ -307,8 +307,8 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
           region.setSelected(false);
         }
 
-        // Find and delete associated TextArea results first
-        const resultsToDelete = annotation.results.filter(r => r.parent_id === region.id);
+        // Find and delete associated results from the region's results array
+        const resultsToDelete = region.results || [];
         console.log(`[Merge]   - Found ${resultsToDelete.length} associated results to delete`);
 
         resultsToDelete.forEach(result => {
