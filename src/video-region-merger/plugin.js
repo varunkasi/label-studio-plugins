@@ -317,9 +317,9 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
               console.log(`[Merge] Merged region ${mergedRegion.id} has global_id result: ${hasGlobalId}`);
 
               if (!hasGlobalId) {
-                console.log(`[Merge] Adding global_id result to merged region's results array`);
-                mergedRegion.results.push(globalIdResult);
-                console.log(`[Merge] After push, merged region results count:`, mergedRegion.results.length);
+                console.log(`[Merge] Adding global_id result to merged region using addResult action`);
+                mergedRegion.addResult(globalIdResult);
+                console.log(`[Merge] After addResult, merged region results count:`, mergedRegion.results.length);
               }
             } else {
               console.warn(`[Merge] Cannot add global_id: mergedRegion=${!!mergedRegion}, globalIdResult=${!!globalIdResult}`);
