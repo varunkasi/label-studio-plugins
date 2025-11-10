@@ -61,6 +61,27 @@ function addMergeButton() {
  */
 function mergeRegionsByGlobalId() {
   try {
+    // Force blur on active element to commit any pending TextArea changes
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+      console.log('[Merge] Blurring active element to commit pending changes');
+      document.activeElement.blur();
+    }
+
+    // Small delay to allow blur event to process
+    setTimeout(() => {
+      performMerge();
+    }, 50);
+  } catch (error) {
+    console.error('Error during region merge:', error);
+    Htx.showModal(`Error merging regions: ${error.message}`, 'error');
+  }
+}
+
+/**
+ * Performs the actual merge operation after pending changes are committed
+ */
+function performMerge() {
+  try {
     const annotation = Htx.annotationStore.selected;
 
     if (!annotation) {
