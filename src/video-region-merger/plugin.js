@@ -271,21 +271,40 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
 
       // Add the global_id to the new merged region
       if (mergedResult) {
-        // Find the global_id TextArea control
-        const globalIdControl = annotation.names.get('global_id');
-
-        if (globalIdControl) {
-          // Create a TextArea result for the merged region
-          const globalIdResult = annotation.createResult(
-            {
-              text: [globalId]
-            },
-            {},
-            'global_id',
-            videoObject,
-            mergedResult
+        try {
+          // Find the newly created region
+          const mergedRegion = annotation.regions.find(r =>
+            r.results && r.results.some(res => res.id === mergedResult.id)
           );
-          console.log(`[Merge] global_id assigned to merged region:`, globalIdResult?.id);
+
+          if (mergedRegion) {
+            console.log(`[Merge] Found merged region:`, mergedRegion.id);
+
+            // Find the global_id TextArea control
+            const globalIdControl = annotation.names.get('global_id');
+
+            if (globalIdControl) {
+              // Create a TextArea result for the merged region
+              const globalIdResult = annotation.createResult(
+                {
+                  text: [globalId]
+                },
+                {},
+                globalIdControl,
+                videoObject
+              );
+
+              // Add the result to the merged region's results array
+              if (globalIdResult && mergedRegion.results) {
+                mergedRegion.results.push(globalIdResult);
+                console.log(`[Merge] global_id assigned to merged region:`, globalIdResult?.id);
+              }
+            }
+          } else {
+            console.warn('[Merge] Could not find merged region to assign global_id');
+          }
+        } catch (err) {
+          console.error('[Merge] Error adding global_id to merged region:', err);
         }
       }
 
@@ -332,7 +351,7 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
 
     } catch (error) {
       console.error('[Merge] Error creating merged region:', error);
-      throw error;
+      // Don't throw - let the merge continue and try to delete regions anyway
     }
   } else {
     console.error('[Merge] Missing videoObject or fromName, cannot create merged region');
