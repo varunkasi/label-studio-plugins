@@ -301,15 +301,16 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
 
             console.log(`[Merge] global_id result created:`, globalIdResult?.id);
 
-            // Verify the result is in the merged region's results array
-            console.log(`[Merge] Looking for merged region with result id:`, mergedResult.id);
+            // Find the merged region by ID (region ID matches result ID in Label Studio)
+            console.log(`[Merge] Looking for merged region with id:`, mergedResult.id);
             console.log(`[Merge] Current annotation.regions count:`, annotation.regions.length);
 
-            const mergedRegion = annotation.regions.find(r =>
-              r.results && r.results.some(res => res.id === mergedResult.id)
-            );
+            const mergedRegion = annotation.regions.find(r => r.id === mergedResult.id);
 
             console.log(`[Merge] Found merged region:`, mergedRegion?.id);
+            if (mergedRegion) {
+              console.log(`[Merge] Merged region results count:`, mergedRegion.results?.length);
+            }
 
             if (mergedRegion && globalIdResult) {
               const hasGlobalId = mergedRegion.results.some(r => r.id === globalIdResult.id);
