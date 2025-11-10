@@ -158,9 +158,6 @@ function mergeRegionsByGlobalId() {
     // Method 4: Delayed refresh to ensure React/MobX state updates propagate
     setTimeout(() => {
       annotation.updateObjects();
-      if (annotation.regionStore) {
-        annotation.regionStore.triggerUpdate();
-      }
       console.log('[Merge] Delayed UI refresh complete');
     }, 50);
 
