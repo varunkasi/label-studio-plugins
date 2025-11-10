@@ -22,38 +22,6 @@ async function initVideoRegionMerger() {
       mergeRegionsByGlobalId();
     }
   });
-
-  // Also add a custom button to the interface
-  addMergeButton();
-}
-
-/**
- * Adds a "Merge Regions by Global ID" button to the interface
- */
-function addMergeButton() {
-  // Wait for the UI to be fully loaded
-  setTimeout(() => {
-    const toolbar = document.querySelector('.lsf-toolbar') ||
-                    document.querySelector('[class*="toolbar"]') ||
-                    document.querySelector('.lsf-sidepanels__wrapper');
-
-    if (toolbar) {
-      const button = document.createElement('button');
-      button.textContent = 'Merge Regions by Global ID';
-      button.className = 'lsf-button';
-      button.style.cssText = 'margin: 10px; padding: 8px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;';
-
-      button.addEventListener('click', mergeRegionsByGlobalId);
-      button.addEventListener('mouseenter', () => {
-        button.style.background = '#0056b3';
-      });
-      button.addEventListener('mouseleave', () => {
-        button.style.background = '#007bff';
-      });
-
-      toolbar.appendChild(button);
-    }
-  }, 1000);
 }
 
 /**

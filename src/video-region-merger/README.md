@@ -23,7 +23,6 @@ This plugin allows you to annotate each segment separately with a unique `global
 ## Features
 
 - **Keyboard Shortcut**: Press `Ctrl+M` (Windows/Linux) or `Cmd+M` (Mac) to merge regions
-- **UI Button**: A "Merge Regions by Global ID" button is automatically added to the interface
 - **Smart Merging**: Combines all temporal sequences from regions with matching `global_id` values
 - **Automatic Cleanup**: Deletes original regions after successful merge
 - **Frame Deduplication**: Removes duplicate keyframes when merging sequences
@@ -33,7 +32,7 @@ This plugin allows you to annotate each segment separately with a unique `global
 
 1. **Annotate Video Regions**: Create video rectangle annotations for person tracking
 2. **Assign Global IDs**: For each track/region, enter the same `global_id` for the same person (e.g., "P000123")
-3. **Trigger Merge**: Press `Ctrl+M` or click the "Merge Regions by Global ID" button
+3. **Trigger Merge**: Press `Ctrl+M` (Windows/Linux) or `Cmd+M` (Mac)
 4. **Review Results**: The plugin will:
    - Group all regions by their `global_id`
    - Merge sequences from each group into a single region
@@ -115,10 +114,6 @@ Example data format:
 - Check that multiple regions share the exact same `global_id` (case-sensitive)
 - Verify you have selected an annotation
 - Open browser console (F12) and look for `[Merge]` log messages to see what's happening
-
-**Button not appearing?**
-- The button may take a moment to load (up to 1 second)
-- Check browser console for any JavaScript errors
 
 **Merge not working as expected?**
 - Check browser console for error messages
