@@ -269,42 +269,43 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
 
       console.log(`[Merge] Merged result created:`, mergedResult?.id);
 
-      // Add the global_id to the new merged region
+      // Add the global_id to the new merged region using a working template
       if (mergedResult) {
         try {
-          // Find the newly created region
-          const mergedRegion = annotation.regions.find(r =>
-            r.results && r.results.some(res => res.id === mergedResult.id)
-          );
-
-          if (mergedRegion) {
-            console.log(`[Merge] Found merged region:`, mergedRegion.id);
-
-            // Find the global_id TextArea control
-            const globalIdControl = annotation.names.get('global_id');
-
-            if (globalIdControl) {
-              // Create a TextArea result for the merged region
-              const globalIdResult = annotation.createResult(
-                {
-                  text: [globalId]
-                },
-                {},
-                globalIdControl,
-                videoObject
-              );
-
-              // Add the result to the merged region's results array
-              if (globalIdResult && mergedRegion.results) {
-                mergedRegion.results.push(globalIdResult);
-                console.log(`[Merge] global_id assigned to merged region:`, globalIdResult?.id);
-              }
+          // Find an existing global_id result from one of the source regions to use as template
+          let templateGlobalIdResult = null;
+          for (const region of regionsToMerge) {
+            const globalIdRes = region.results?.find(r =>
+              r.from_name?.name === 'global_id'
+            );
+            if (globalIdRes) {
+              templateGlobalIdResult = globalIdRes;
+              console.log(`[Merge] Using template from region ${region.id}:`, {
+                from_name: globalIdRes.from_name?.name,
+                to_name: globalIdRes.to_name?.name
+              });
+              break;
             }
+          }
+
+          if (templateGlobalIdResult) {
+            // Use the exact same from_name and to_name objects that work
+            const globalIdResult = annotation.createResult(
+              {
+                text: [globalId]
+              },
+              {},
+              templateGlobalIdResult.from_name,  // Use working control object
+              templateGlobalIdResult.to_name     // Use working video object
+            );
+
+            console.log(`[Merge] global_id result created:`, globalIdResult?.id);
           } else {
-            console.warn('[Merge] Could not find merged region to assign global_id');
+            console.warn('[Merge] Could not find template global_id result from source regions');
           }
         } catch (err) {
           console.error('[Merge] Error adding global_id to merged region:', err);
+          console.error('[Merge] Error details:', err.message, err.stack);
         }
       }
 
