@@ -300,6 +300,21 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
             );
 
             console.log(`[Merge] global_id result created:`, globalIdResult?.id);
+
+            // Verify the result is in the merged region's results array
+            const mergedRegion = annotation.regions.find(r =>
+              r.results && r.results.some(res => res.id === mergedResult.id)
+            );
+
+            if (mergedRegion && globalIdResult) {
+              const hasGlobalId = mergedRegion.results.some(r => r.id === globalIdResult.id);
+              console.log(`[Merge] Merged region ${mergedRegion.id} has global_id result: ${hasGlobalId}`);
+
+              if (!hasGlobalId) {
+                console.log(`[Merge] Adding global_id result to merged region's results array`);
+                mergedRegion.results.push(globalIdResult);
+              }
+            }
           } else {
             console.warn('[Merge] Could not find template global_id result from source regions');
           }
@@ -309,7 +324,7 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
         }
       }
 
-      // Delete all original regions and their associated results
+      // Delete all original regions (their results will be deleted automatically)
       console.log(`[Merge] Deleting ${regionsToMerge.length} original regions...`);
 
       // Unselect any selected regions first to avoid UI issues
@@ -325,22 +340,8 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
           region.setSelected(false);
         }
 
-        // Find and delete associated results from the region's results array
-        const resultsToDelete = region.results || [];
-        console.log(`[Merge]   - Found ${resultsToDelete.length} associated results to delete`);
-
-        resultsToDelete.forEach(result => {
-          try {
-            annotation.deleteResult(result);
-            console.log(`[Merge]   - Deleted result: ${result.id}`);
-          } catch (err) {
-            console.error(`[Merge]   - Error deleting result ${result.id}:`, err);
-          }
-        });
-
-        // Delete the region itself
+        // Delete the region (its results will be automatically deleted)
         try {
-          // Try to manually remove from the region list if deleteRegion doesn't trigger UI update
           annotation.deleteRegion(region);
           console.log(`[Merge]   - Deleted region: ${region.id}`);
         } catch (err) {
