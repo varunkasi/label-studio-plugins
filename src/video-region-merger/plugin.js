@@ -302,9 +302,14 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
             console.log(`[Merge] global_id result created:`, globalIdResult?.id);
 
             // Verify the result is in the merged region's results array
+            console.log(`[Merge] Looking for merged region with result id:`, mergedResult.id);
+            console.log(`[Merge] Current annotation.regions count:`, annotation.regions.length);
+
             const mergedRegion = annotation.regions.find(r =>
               r.results && r.results.some(res => res.id === mergedResult.id)
             );
+
+            console.log(`[Merge] Found merged region:`, mergedRegion?.id);
 
             if (mergedRegion && globalIdResult) {
               const hasGlobalId = mergedRegion.results.some(r => r.id === globalIdResult.id);
@@ -313,7 +318,10 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
               if (!hasGlobalId) {
                 console.log(`[Merge] Adding global_id result to merged region's results array`);
                 mergedRegion.results.push(globalIdResult);
+                console.log(`[Merge] After push, merged region results count:`, mergedRegion.results.length);
               }
+            } else {
+              console.warn(`[Merge] Cannot add global_id: mergedRegion=${!!mergedRegion}, globalIdResult=${!!globalIdResult}`);
             }
           } else {
             console.warn('[Merge] Could not find template global_id result from source regions');
@@ -325,6 +333,7 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
       }
 
       // Delete all original regions (their results will be deleted automatically)
+      console.log(`[Merge] Before deletion - region count: ${annotation.regions.length}`);
       console.log(`[Merge] Deleting ${regionsToMerge.length} original regions...`);
 
       // Unselect any selected regions first to avoid UI issues
@@ -334,6 +343,7 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
 
       regionsToMerge.forEach((region, index) => {
         console.log(`[Merge] Deleting region ${index + 1}/${regionsToMerge.length}: ${region.id}`);
+        console.log(`[Merge]   - Count before delete: ${annotation.regions.length}`);
 
         // Unselect this specific region if it's selected
         if (region.selected) {
@@ -344,12 +354,14 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
         try {
           annotation.deleteRegion(region);
           console.log(`[Merge]   - Deleted region: ${region.id}`);
+          console.log(`[Merge]   - Count after delete: ${annotation.regions.length}`);
         } catch (err) {
           console.error(`[Merge]   - Error deleting region ${region.id}:`, err);
         }
       });
 
-      console.log(`[Merge] Deletion complete. Current region count: ${annotation.regions.length}`);
+      console.log(`[Merge] Deletion complete. Final region count: ${annotation.regions.length}`);
+      console.log(`[Merge] Remaining region IDs:`, annotation.regions.map(r => r.id));
 
     } catch (error) {
       console.error('[Merge] Error creating merged region:', error);
