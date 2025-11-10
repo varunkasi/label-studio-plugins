@@ -289,18 +289,6 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
           }
 
           if (templateGlobalIdResult) {
-            // Use the exact same from_name and to_name objects that work
-            const globalIdResult = annotation.createResult(
-              {
-                text: [globalId]
-              },
-              {},
-              templateGlobalIdResult.from_name,  // Use working control object
-              templateGlobalIdResult.to_name     // Use working video object
-            );
-
-            console.log(`[Merge] global_id result created:`, globalIdResult?.id);
-
             // Find the merged region by ID (region ID matches result ID in Label Studio)
             console.log(`[Merge] Looking for merged region with id:`, mergedResult.id);
             console.log(`[Merge] Current annotation.regions count:`, annotation.regions.length);
@@ -310,19 +298,26 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
             console.log(`[Merge] Found merged region:`, mergedRegion?.id);
             if (mergedRegion) {
               console.log(`[Merge] Merged region results count:`, mergedRegion.results?.length);
-            }
 
-            if (mergedRegion && globalIdResult) {
-              const hasGlobalId = mergedRegion.results.some(r => r.id === globalIdResult.id);
+              // Check if global_id already exists
+              const hasGlobalId = mergedRegion.results.some(r =>
+                r.from_name?.name === 'global_id'
+              );
               console.log(`[Merge] Merged region ${mergedRegion.id} has global_id result: ${hasGlobalId}`);
 
               if (!hasGlobalId) {
-                console.log(`[Merge] Adding global_id result to merged region using addResult action`);
-                mergedRegion.addResult(globalIdResult);
+                // Pass plain object descriptor directly to addResult
+                console.log(`[Merge] Adding global_id result using addResult with plain object`);
+                mergedRegion.addResult({
+                  type: 'textarea',
+                  from_name: templateGlobalIdResult.from_name,
+                  to_name: templateGlobalIdResult.to_name,
+                  value: { text: [globalId] }
+                });
                 console.log(`[Merge] After addResult, merged region results count:`, mergedRegion.results.length);
               }
             } else {
-              console.warn(`[Merge] Cannot add global_id: mergedRegion=${!!mergedRegion}, globalIdResult=${!!globalIdResult}`);
+              console.warn(`[Merge] Could not find merged region with id: ${mergedResult.id}`);
             }
           } else {
             console.warn('[Merge] Could not find template global_id result from source regions');
