@@ -13,7 +13,7 @@
   <TextArea name="global_id" toName="video"
             editable="true"
             perRegion="true"
-            placeholder="Enter global_id to merge regions (e.g., person_1, person_2)"/>
+            placeholder="Enter integer ID to merge regions (e.g., 1, 2, 3)"/>
 </View>
 
 <!--

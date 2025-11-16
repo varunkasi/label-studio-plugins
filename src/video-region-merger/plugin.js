@@ -7,8 +7,14 @@
  *
  * Usage:
  * - Annotate multiple video regions (tracks)
- * - Assign the same global_id to regions that represent the same person across different tracks
+ * - Assign the same integer global_id to regions that represent the same object (e.g., 1, 2, 3)
  * - Press Ctrl+M (or Cmd+M on Mac) to merge regions with matching global_id values
+ * - Regions without global_id or with invalid values are silently skipped (no popups)
+ *
+ * Validation:
+ * - global_id must be a positive integer (e.g., "1", "2", "100")
+ * - Empty or non-integer values are ignored during merge
+ * - Only regions with matching integer global_id values are merged
  */
 
 async function initVideoRegionMerger() {
@@ -70,13 +76,11 @@ function performMerge() {
     }
 
     // Build a map of region_id -> global_id
+    // Only include regions with valid integer global_id values
     const regionToGlobalId = new Map();
-    const regionsWithoutGlobalId = [];
 
     // For each region, find its associated global_id from its results array
     regions.forEach(region => {
-      let hasGlobalId = false;
-
       if (region.results && Array.isArray(region.results)) {
         const globalIdResult = region.results.find(r =>
           r.type === 'textarea' &&
@@ -89,40 +93,27 @@ function performMerge() {
 
         if (globalIdResult) {
           const globalId = globalIdResult.value.text[0].trim();
-          if (globalId) {
+
+          // Validate: global_id must be non-empty and a valid integer
+          if (globalId && /^\d+$/.test(globalId)) {
             regionToGlobalId.set(region.id, globalId);
-            hasGlobalId = true;
-            console.log(`[Merge] Region ${region.id} has global_id: ${globalId}`);
+            console.log(`[Merge] Region ${region.id} has valid integer global_id: ${globalId}`);
+          } else if (globalId) {
+            console.log(`[Merge] Region ${region.id} has invalid global_id (not an integer): ${globalId}`);
           }
         }
       }
-
-      if (!hasGlobalId) {
-        regionsWithoutGlobalId.push(region.id);
-      }
     });
 
-    // More lenient validation: proceed if we have ANY regions with global_id
-    // instead of blocking the entire operation
+    // Silently skip merge if no valid regions found
+    // This prevents unexpected popups when regions don't have global_id set
     if (regionToGlobalId.size === 0) {
-      // Only show error if there are regions but none have global_id
-      if (regions.length > 0) {
-        Htx.showModal(
-          'No regions with global_id found. Please add global_id values to your regions first.\n\n' +
-          'Tip: Make sure to click outside the textarea or press Tab to save your changes before merging.',
-          'info'
-        );
-      } else {
-        Htx.showModal('No regions found to merge.', 'info');
-      }
+      console.log('[Merge] No regions with valid integer global_id found. Skipping merge.');
       return;
     }
 
-    // Inform user if some regions will be skipped
-    if (regionsWithoutGlobalId.length > 0) {
-      console.log(`[Merge] Skipping ${regionsWithoutGlobalId.length} region(s) without global_id:`, regionsWithoutGlobalId);
-      console.log(`[Merge] Proceeding with ${regionToGlobalId.size} region(s) that have global_id`);
-    }
+    console.log(`[Merge] Found ${regionToGlobalId.size} region(s) with valid integer global_id`);
+    console.log(`[Merge] Skipping ${regions.length - regionToGlobalId.size} region(s) without valid global_id`);
 
     // Group regions by global_id
     const globalIdToRegions = new Map();
@@ -142,7 +133,6 @@ function performMerge() {
     // Track merge statistics
     let mergedCount = 0;
     let totalRegionsProcessed = 0;
-    let skippedSingleRegions = 0;
 
     // For each global_id group with multiple regions, merge them
     globalIdToRegions.forEach((regionsGroup, globalId) => {
@@ -151,11 +141,8 @@ function performMerge() {
         mergeRegions(regionsGroup, globalId, annotation);
         mergedCount++;
         totalRegionsProcessed += regionsGroup.length;
-      } else {
-        // Count regions that have global_id but nothing to merge with
-        skippedSingleRegions++;
-        console.log(`[Merge] Skipping single region with global_id: ${globalId} (nothing to merge with)`);
       }
+      // Silently skip single regions - no logging needed
     });
 
     console.log('[Merge] Merge complete. Triggering UI update...');
@@ -188,32 +175,16 @@ function performMerge() {
       console.log('[Merge] Final UI refresh complete');
     }, 200);
 
-    // Show appropriate success/info message
+    // Show success message only when actual merges happened
     if (mergedCount > 0) {
-      let message = `Successfully merged ${totalRegionsProcessed} regions into ${mergedCount} merged region(s).`;
-
-      if (regionsWithoutGlobalId.length > 0) {
-        message += `\n\nSkipped ${regionsWithoutGlobalId.length} region(s) without global_id.`;
-      }
-
-      if (skippedSingleRegions > 0) {
-        message += `\n\n${skippedSingleRegions} region(s) with global_id had nothing to merge with.`;
-      }
-
-      Htx.showModal(message, 'success');
+      Htx.showModal(
+        `Successfully merged ${totalRegionsProcessed} regions into ${mergedCount} merged region(s).`,
+        'success'
+      );
     } else {
-      // No merges happened
-      let message = 'No regions with matching global_id found to merge.';
-
-      if (regionsWithoutGlobalId.length > 0) {
-        message += `\n\n${regionsWithoutGlobalId.length} region(s) are missing global_id values.`;
-      }
-
-      if (skippedSingleRegions > 0) {
-        message += `\n\n${skippedSingleRegions} region(s) have unique global_id values (nothing to merge with).`;
-      }
-
-      Htx.showModal(message, 'info');
+      // No merges happened - silently skip (no popup)
+      // This prevents unexpected popups when regions have unique or no global_id values
+      console.log('[Merge] No matching global_id values found to merge.');
     }
 
   } catch (error) {
