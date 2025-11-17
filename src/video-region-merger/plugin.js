@@ -17,17 +17,44 @@
  * - Only regions with matching integer global_id values are merged
  */
 
+// State management
+let mergeInProgress = false;
+let keydownHandler = null;
+
 async function initVideoRegionMerger() {
   // Wait for Label Studio Interface to be ready
   await LSI;
 
+  // Remove any existing listener to prevent duplicates
+  if (keydownHandler) {
+    window.removeEventListener("keydown", keydownHandler);
+  }
+
   // Add keyboard shortcut (Ctrl+M or Cmd+M) to trigger merge
-  window.addEventListener("keydown", (e) => {
+  keydownHandler = (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "m") {
       e.preventDefault();
-      mergeRegionsByGlobalId();
+
+      // Debouncing: prevent multiple simultaneous merges
+      if (!mergeInProgress) {
+        mergeRegionsByGlobalId();
+      } else {
+        console.log('[Merge] Merge already in progress, ignoring keypress');
+      }
     }
-  });
+  };
+
+  window.addEventListener("keydown", keydownHandler);
+}
+
+/**
+ * Cleanup function to remove event listeners (call when plugin is destroyed)
+ */
+function cleanupVideoRegionMerger() {
+  if (keydownHandler) {
+    window.removeEventListener("keydown", keydownHandler);
+    keydownHandler = null;
+  }
 }
 
 /**
@@ -35,22 +62,189 @@ async function initVideoRegionMerger() {
  */
 function mergeRegionsByGlobalId() {
   try {
+    // Set merge in progress flag to prevent concurrent merges
+    mergeInProgress = true;
+
     // Force blur on active element to commit any pending TextArea changes
     if (document.activeElement && typeof document.activeElement.blur === 'function') {
       console.log('[Merge] Blurring active element to commit pending changes');
       document.activeElement.blur();
     }
 
-    // Increased delay to 150ms to ensure blur event processes and commits changes
-    // This prevents false negatives where newly entered global_id values
-    // haven't been committed to region.results yet
-    setTimeout(() => {
-      performMerge();
-    }, 150);
+    // Use requestAnimationFrame to wait for the next browser render cycle,
+    // then add a minimal delay for Label Studio's internal state updates.
+    // This is more reliable than a fixed arbitrary delay as it ensures
+    // the blur event and DOM updates have been processed.
+    requestAnimationFrame(() => {
+      // Additional 50ms delay for Label Studio's MobX state to update
+      // (reduced from 150ms for better responsiveness)
+      setTimeout(() => {
+        try {
+          performMerge();
+        } finally {
+          // Always reset the flag, even if merge fails
+          mergeInProgress = false;
+        }
+      }, 50);
+    });
   } catch (error) {
+    mergeInProgress = false;
     console.error('Error during region merge:', error);
     Htx.showModal(`Error merging regions: ${error.message}`, 'error');
   }
+}
+
+/**
+ * Finds a global_id result template from source regions
+ * @param {Array} regionsToMerge - Source regions to search
+ * @returns {Object|null} Template global_id result or null if not found
+ */
+function findGlobalIdTemplate(regionsToMerge) {
+  for (const region of regionsToMerge) {
+    const globalIdRes = region.results?.find(r =>
+      r.from_name?.name === 'global_id'
+    );
+    if (globalIdRes) {
+      console.log(`[Merge] Using template from region ${region.id}:`, {
+        from_name: globalIdRes.from_name?.name,
+        to_name: globalIdRes.to_name?.name
+      });
+      return globalIdRes;
+    }
+  }
+  console.warn('[Merge] Could not find template global_id result from source regions');
+  return null;
+}
+
+/**
+ * Attaches a global_id to the merged region
+ * @param {Object} mergedResult - The newly created merged result
+ * @param {string} globalId - The global_id value to attach
+ * @param {Object} templateGlobalIdResult - Template to use for structure
+ * @param {Object} annotation - The annotation object
+ * @returns {boolean} True if successful, false otherwise
+ */
+function attachGlobalIdToRegion(mergedResult, globalId, templateGlobalIdResult, annotation) {
+  if (!mergedResult) {
+    console.error('[Merge] No merged result provided');
+    return false;
+  }
+
+  if (!templateGlobalIdResult) {
+    console.warn('[Merge] No template provided for global_id');
+    return false;
+  }
+
+  // Find the merged region by ID (region ID matches result ID in Label Studio)
+  console.log(`[Merge] Looking for merged region with id:`, mergedResult.id);
+  console.log(`[Merge] Current annotation.regions count:`, annotation.regions.length);
+
+  const mergedRegion = annotation.regions.find(r => r.id === mergedResult.id);
+
+  if (!mergedRegion) {
+    console.warn(`[Merge] Could not find merged region with id: ${mergedResult.id}`);
+    return false;
+  }
+
+  console.log(`[Merge] Found merged region:`, mergedRegion.id);
+  console.log(`[Merge] Merged region results count:`, mergedRegion.results?.length);
+
+  // Check if global_id already exists
+  const hasGlobalId = mergedRegion.results.some(r =>
+    r.from_name?.name === 'global_id'
+  );
+  console.log(`[Merge] Merged region ${mergedRegion.id} has global_id result: ${hasGlobalId}`);
+
+  if (!hasGlobalId) {
+    // Pass plain object descriptor directly to addResult
+    console.log(`[Merge] Adding global_id result using addResult with plain object`);
+    mergedRegion.addResult({
+      type: 'textarea',
+      from_name: templateGlobalIdResult.from_name,
+      to_name: templateGlobalIdResult.to_name,
+      value: { text: [globalId] }
+    });
+    console.log(`[Merge] After addResult, merged region results count:`, mergedRegion.results.length);
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Deletes the source regions after merge
+ * @param {Array} regionsToMerge - Regions to delete
+ * @param {Object} annotation - The annotation object
+ */
+function deleteSourceRegions(regionsToMerge, annotation) {
+  console.log(`[Merge] Before deletion - region count: ${annotation.regions.length}`);
+  console.log(`[Merge] Deleting ${regionsToMerge.length} original regions...`);
+
+  // Unselect any selected regions first to avoid UI issues
+  if (annotation.regionStore && annotation.regionStore.unselectAll) {
+    annotation.regionStore.unselectAll();
+  }
+
+  regionsToMerge.forEach((region, index) => {
+    console.log(`[Merge] Deleting region ${index + 1}/${regionsToMerge.length}: ${region.id}`);
+    console.log(`[Merge]   - Count before delete: ${annotation.regions.length}`);
+
+    // Unselect this specific region if it's selected
+    if (region.selected) {
+      region.setSelected(false);
+    }
+
+    // Delete the region (its results will be automatically deleted)
+    try {
+      annotation.deleteRegion(region);
+      console.log(`[Merge]   - Deleted region: ${region.id}`);
+      console.log(`[Merge]   - Count after delete: ${annotation.regions.length}`);
+    } catch (err) {
+      console.error(`[Merge]   - Error deleting region ${region.id}:`, err);
+    }
+  });
+
+  console.log(`[Merge] Deletion complete. Final region count: ${annotation.regions.length}`);
+  console.log(`[Merge] Remaining region IDs:`, annotation.regions.map(r => r.id));
+}
+
+/**
+ * Refreshes the Label Studio UI to reflect region changes
+ * Uses multiple strategies to ensure all UI components update correctly
+ *
+ * @param {Object} annotation - The annotation object
+ */
+function refreshAnnotationUI(annotation) {
+  // Step 1: Immediate update to trigger initial render
+  annotation.updateObjects();
+
+  // Step 2: Unselect all regions to clear UI state
+  // This ensures the region list and canvas are in sync
+  if (annotation.regionStore) {
+    annotation.regionStore.unselectAll();
+  }
+
+  // Step 3: History-based refresh to ensure undo/redo stack is consistent
+  // Freezing history prevents creating undo steps during internal updates
+  if (annotation.history) {
+    annotation.history.freeze();
+    annotation.updateObjects();
+    annotation.history.unfreeze();
+  }
+
+  // Step 4: Delayed refresh to allow MobX reactions to propagate
+  // React re-renders triggered by MobX may take 1-2 animation frames
+  setTimeout(() => {
+    annotation.updateObjects();
+    console.log('[Merge] First delayed UI refresh complete');
+  }, 50);
+
+  // Step 5: Final refresh as a safety net for any stragglers
+  // Some UI components (e.g., timeline) may update on their own schedule
+  setTimeout(() => {
+    annotation.updateObjects();
+    console.log('[Merge] Final UI refresh complete');
+  }, 200);
 }
 
 /**
@@ -94,12 +288,13 @@ function performMerge() {
         if (globalIdResult) {
           const globalId = globalIdResult.value.text[0].trim();
 
-          // Validate: global_id must be non-empty and a valid integer
-          if (globalId && /^\d+$/.test(globalId)) {
+          // Validate: global_id must be a positive integer (excluding 0)
+          // Regex: ^[1-9]\d*$ matches integers starting with 1-9
+          if (globalId && /^[1-9]\d*$/.test(globalId)) {
             regionToGlobalId.set(region.id, globalId);
-            console.log(`[Merge] Region ${region.id} has valid integer global_id: ${globalId}`);
+            console.log(`[Merge] Region ${region.id} has valid positive integer global_id: ${globalId}`);
           } else if (globalId) {
-            console.log(`[Merge] Region ${region.id} has invalid global_id (not an integer): ${globalId}`);
+            console.log(`[Merge] Region ${region.id} has invalid global_id (not a positive integer): ${globalId}`);
           }
         }
       }
@@ -147,33 +342,11 @@ function performMerge() {
 
     console.log('[Merge] Merge complete. Triggering UI update...');
 
-    // Force multiple UI refresh mechanisms to ensure regions are redrawn
-    // Method 1: Direct update
-    annotation.updateObjects();
-
-    // Method 2: Trigger a region list refresh
-    if (annotation.regionStore) {
-      annotation.regionStore.unselectAll();
-    }
-
-    // Method 3: History-based refresh
-    if (annotation.history) {
-      annotation.history.freeze();
-      annotation.updateObjects();
-      annotation.history.unfreeze();
-    }
-
-    // Method 4: Delayed refresh to ensure React/MobX state updates propagate
-    setTimeout(() => {
-      annotation.updateObjects();
-      console.log('[Merge] Delayed UI refresh complete');
-    }, 50);
-
-    // Method 5: Final refresh to catch any stragglers
-    setTimeout(() => {
-      annotation.updateObjects();
-      console.log('[Merge] Final UI refresh complete');
-    }, 200);
+    // Refresh the UI using a multi-step approach
+    // Label Studio uses MobX for reactive state management, and updates may not
+    // propagate immediately. This multi-step refresh ensures consistency across
+    // all UI components (region list, canvas, timeline, etc.)
+    refreshAnnotationUI(annotation);
 
     // Show success message only when actual merges happened
     if (mergedCount > 0) {
@@ -201,6 +374,12 @@ function performMerge() {
  * @param {Object} annotation - The annotation object
  */
 function mergeRegions(regionsToMerge, globalId, annotation) {
+  // Safety check: ensure we have regions to merge
+  if (!regionsToMerge || regionsToMerge.length === 0) {
+    console.error('[Merge] No regions provided to merge');
+    return;
+  }
+
   console.log(`[Merge] Processing merge for global_id: ${globalId}`);
   console.log(`[Merge] Regions to merge:`, regionsToMerge.map(r => ({ id: r.id, frames: r.sequence?.length })));
 
@@ -236,11 +415,23 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
   });
 
   // Remove duplicate keyframes (same frame number)
+  // Use proper property existence check to handle frame=0 and time=0 correctly
   const uniqueSequences = [];
   const seenFrames = new Set();
 
   allSequences.forEach(seq => {
-    const frameKey = seq.frame !== undefined ? seq.frame : seq.time;
+    // Create a composite key that distinguishes between frame-based and time-based sequences
+    // This prevents collisions when frame=5 and time=5 are different semantic values
+    let frameKey;
+    if ('frame' in seq) {
+      frameKey = `frame:${seq.frame}`;
+    } else if ('time' in seq) {
+      frameKey = `time:${seq.time}`;
+    } else {
+      // Fallback: use object reference if neither frame nor time exists
+      frameKey = `ref:${uniqueSequences.length}`;
+    }
+
     if (!seenFrames.has(frameKey)) {
       seenFrames.add(frameKey);
       uniqueSequences.push(seq);
@@ -280,58 +471,12 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
 
       console.log(`[Merge] Merged result created:`, mergedResult?.id);
 
-      // Add the global_id to the new merged region using a working template
+      // Add the global_id to the new merged region
       if (mergedResult) {
         try {
-          // Find an existing global_id result from one of the source regions to use as template
-          let templateGlobalIdResult = null;
-          for (const region of regionsToMerge) {
-            const globalIdRes = region.results?.find(r =>
-              r.from_name?.name === 'global_id'
-            );
-            if (globalIdRes) {
-              templateGlobalIdResult = globalIdRes;
-              console.log(`[Merge] Using template from region ${region.id}:`, {
-                from_name: globalIdRes.from_name?.name,
-                to_name: globalIdRes.to_name?.name
-              });
-              break;
-            }
-          }
-
+          const templateGlobalIdResult = findGlobalIdTemplate(regionsToMerge);
           if (templateGlobalIdResult) {
-            // Find the merged region by ID (region ID matches result ID in Label Studio)
-            console.log(`[Merge] Looking for merged region with id:`, mergedResult.id);
-            console.log(`[Merge] Current annotation.regions count:`, annotation.regions.length);
-
-            const mergedRegion = annotation.regions.find(r => r.id === mergedResult.id);
-
-            console.log(`[Merge] Found merged region:`, mergedRegion?.id);
-            if (mergedRegion) {
-              console.log(`[Merge] Merged region results count:`, mergedRegion.results?.length);
-
-              // Check if global_id already exists
-              const hasGlobalId = mergedRegion.results.some(r =>
-                r.from_name?.name === 'global_id'
-              );
-              console.log(`[Merge] Merged region ${mergedRegion.id} has global_id result: ${hasGlobalId}`);
-
-              if (!hasGlobalId) {
-                // Pass plain object descriptor directly to addResult
-                console.log(`[Merge] Adding global_id result using addResult with plain object`);
-                mergedRegion.addResult({
-                  type: 'textarea',
-                  from_name: templateGlobalIdResult.from_name,
-                  to_name: templateGlobalIdResult.to_name,
-                  value: { text: [globalId] }
-                });
-                console.log(`[Merge] After addResult, merged region results count:`, mergedRegion.results.length);
-              }
-            } else {
-              console.warn(`[Merge] Could not find merged region with id: ${mergedResult.id}`);
-            }
-          } else {
-            console.warn('[Merge] Could not find template global_id result from source regions');
+            attachGlobalIdToRegion(mergedResult, globalId, templateGlobalIdResult, annotation);
           }
         } catch (err) {
           console.error('[Merge] Error adding global_id to merged region:', err);
@@ -340,35 +485,7 @@ function mergeRegions(regionsToMerge, globalId, annotation) {
       }
 
       // Delete all original regions (their results will be deleted automatically)
-      console.log(`[Merge] Before deletion - region count: ${annotation.regions.length}`);
-      console.log(`[Merge] Deleting ${regionsToMerge.length} original regions...`);
-
-      // Unselect any selected regions first to avoid UI issues
-      if (annotation.regionStore && annotation.regionStore.unselectAll) {
-        annotation.regionStore.unselectAll();
-      }
-
-      regionsToMerge.forEach((region, index) => {
-        console.log(`[Merge] Deleting region ${index + 1}/${regionsToMerge.length}: ${region.id}`);
-        console.log(`[Merge]   - Count before delete: ${annotation.regions.length}`);
-
-        // Unselect this specific region if it's selected
-        if (region.selected) {
-          region.setSelected(false);
-        }
-
-        // Delete the region (its results will be automatically deleted)
-        try {
-          annotation.deleteRegion(region);
-          console.log(`[Merge]   - Deleted region: ${region.id}`);
-          console.log(`[Merge]   - Count after delete: ${annotation.regions.length}`);
-        } catch (err) {
-          console.error(`[Merge]   - Error deleting region ${region.id}:`, err);
-        }
-      });
-
-      console.log(`[Merge] Deletion complete. Final region count: ${annotation.regions.length}`);
-      console.log(`[Merge] Remaining region IDs:`, annotation.regions.map(r => r.id));
+      deleteSourceRegions(regionsToMerge, annotation);
 
     } catch (error) {
       console.error('[Merge] Error creating merged region:', error);
