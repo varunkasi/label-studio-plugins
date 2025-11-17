@@ -1,0 +1,34 @@
+<View>
+  <Header value="ReID (Re-Identification) Labels"/>
+  
+  <TextArea name="global_id" toName="video" 
+            perRegion="true"
+            placeholder="Enter a unique integer ID for this person/object"
+            rows="1"/>
+  
+  <TextArea name="reid_notes" toName="video"
+            perRegion="true"
+            placeholder="Optional notes about this person/object"
+            rows="3"/>
+
+  <Header value="Video Annotation"/>
+  
+  <Video name="video" value="$video_url" 
+         frameRate="30"/>
+
+  <VideoRectangle name="box" toName="video"/>
+
+  <Labels name="labels" toName="video">
+    <Label value="Person" background="red"/>
+    <Label value="Vehicle" background="blue"/>
+    <Label value="Object" background="green"/>
+  </Labels>
+</View>
+
+<!--
+{
+  "data": {
+    "video_url": "https://example.com/path/to/video.mp4"
+  }
+}
+-->
