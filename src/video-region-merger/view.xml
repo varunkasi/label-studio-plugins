@@ -1,0 +1,25 @@
+<View>
+  <Header value="Video Annotation with Global ID"/>
+  <Video name="video" value="$video_url" frameRate="24"/>
+
+  <VideoRectangle name="box" toName="video"/>
+
+  <Labels name="labels" toName="video">
+    <Label value="Person" background="red"/>
+    <Label value="Vehicle" background="blue"/>
+    <Label value="Object" background="green"/>
+  </Labels>
+
+  <TextArea name="global_id" toName="video"
+            editable="true"
+            perRegion="true"
+            placeholder="Enter integer ID to merge regions (e.g., 1, 2, 3)"/>
+</View>
+
+<!--
+{
+  "data": {
+    "video_url": "https://example.com/path/to/video.mp4"
+  }
+}
+-->
